@@ -177,7 +177,7 @@ def load(redshift_credentials: Dict, df: pd.DataFrame) -> None:
     # write staging
     FLA_Redshift(**redshift_credentials).write_to_warehouse(
         df = df,
-        table_name = "forecasting_hockey_turnstile_2425_playoffs_staging"
+        table_name = "forecasting_hockey_turnstile_2425_playoffs"
     )
 
     # # drop where primary key
@@ -205,25 +205,6 @@ def load(redshift_credentials: Dict, df: pd.DataFrame) -> None:
 
     return None 
 
-@task(log_prints = True)
-def create_table(redshift_credentials: Dict) -> None:
-
-    # add additional secondary and predict revenue
-    q = """
-        DROP TABLE IF EXISTS custom.forecasting_hockey_tickets_2425;
-
-        CREATE TABLE custom.forecasting_hockey_tickets_2425 AS (
-
-            SELECT
-                *
-            FROM
-                custom.forecasting_hockey_tickets_2425_playoffs_staging
-        );
-    """
-    FLA_Redshift(**redshift_credentials).execute_and_commit(sql_string=q)
-
-    return None 
-
 ########################################################################
 ### FLOW ###############################################################
 ########################################################################
@@ -242,8 +223,6 @@ def forecasting_hockey_turnstile_2425_playoffs() -> None:
     df = transform_and_merge(df_tickets=df_tickets, df_show_rates=df_showrates)
 
     load(redshift_credentials, df)
-
-    create_table(redshift_credentials)
 
     return None 
 
