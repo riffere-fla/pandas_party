@@ -44,6 +44,11 @@ def get_redshift_credentials() -> Dict:
 
 def run_model(df: pd.DataFrame, df_future: pd.DataFrame, parking_lot: str, parking_type: Literal['prepaid', 'onsite']) -> np.ndarray:
 
+    print(parking_type)
+    print(parking_lot)
+    print(df)
+    print(df_future)
+
     if parking_type == "onsite":
         x_train = df[['capacity_remaining','is_weekend','start_time_num']]
     elif parking_type == "prepaid":
@@ -204,7 +209,7 @@ def extract_prepaid_transactions(redshift_credentials: Dict) -> pd.DataFrame:
             FROM
                 custom.calendar_base calendar
             CROSS JOIN
-                (SELECT DISTINCT event_date FROM custom.cth_game_descriptions WHERE season IN ('2023-24', '2024-25') AND game_type = 1) game_desc
+                (SELECT DISTINCT event_date FROM custom.cth_game_descriptions WHERE season IN ('2023-24', '2024-25') AND game_type = 2) game_desc
             CROSS JOIN
                 (SELECT DISTINCT location_group FROM custom.ctp_v_ticket_2425) ticket
             WHERE
@@ -313,9 +318,25 @@ def extract_all_tickets(redshift_credentials: Dict) -> pd.DataFrame:
         INNER JOIN
             custom.cth_game_descriptions game_desc
                 ON summary.event_date::date = game_desc.event_date::date
-                AND game_desc.game_type = 1
+                AND game_desc.game_type = 2
         LEFT JOIN
             custom.calendar_base calendar ON summary.event_date::date = calendar.date::date
+        UNION ALL
+            SELECT
+            forecasting_hockey_turnstile_2425_playoffs.event_date::date,
+            forecasting_hockey_turnstile_2425_playoffs.tier,
+            day_of_week,
+            start_time,
+            CASE
+                WHEN day_of_week in ('Sat','Sun') THEN TRUE
+                ELSE FALSE
+            END AS is_weekend,
+            paid_seats,
+            predicted_turnstile
+        FROM
+            custom.forecasting_hockey_turnstile_2425_playoffs
+        LEFT JOIN
+            custom.cth_game_descriptions on forecasting_hockey_turnstile_2425_playoffs.event_date = date(cth_game_descriptions.event_date)
     """
 
     return FLA_Redshift(**redshift_credentials).query_warehouse(sql_string=q)
@@ -606,6 +627,7 @@ def create_table(redshift_credentials: Dict) -> None:
                     custom.cth_game_descriptions game_desc
                         ON parkhub.event_datetime = game_desc.event_datetime
                         AND game_desc.season IN ('2023-24','2024-25')
+                        AND game_type = 2
                 GROUP BY
                     parkhub.event_datetime,
                     parkhub.location_group
@@ -621,6 +643,8 @@ def create_table(redshift_credentials: Dict) -> None:
                     sum(ticket.net_revenue) AS "current_net_revenue"
                 FROM
                     custom.ctp_v_ticket_2425 ticket
+                WHERE
+                    date(event_datetime) >= '2025-04-26'
                 GROUP BY
                     event_datetime,
                     ticket.location_group
@@ -654,6 +678,8 @@ def create_table(redshift_credentials: Dict) -> None:
                     custom.ctp_parking_capacities capacities USING (location_group)
                 LEFT JOIN
                     parkhub USING (event_datetime, location_group)
+                WHERE
+                    game_type = 2
             ),
             pricing AS (
                 SELECT
@@ -671,6 +697,7 @@ def create_table(redshift_credentials: Dict) -> None:
                 WHERE
                     ticket.is_comp = FALSE
                     AND ticket.price_type ILIKE 'IA%'
+                    AND game_type = 2
                 GROUP BY
                     event_datetime, ticket.location_group
                 ORDER BY
@@ -736,6 +763,8 @@ def create_table(redshift_credentials: Dict) -> None:
                 temp USING (event_date, location_group)
             LEFT JOIN
                 pricing USING (event_date, location_group)
+            WHERE
+                forecast.tier in ('R1','R2','R3','SC')
             ORDER BY
                 event_date,
                 location_group
