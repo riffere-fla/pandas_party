@@ -183,7 +183,7 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
 @task(log_prints = True)
 def get_predictions(df_historical: pd.DataFrame, df_upcoming: pd.DataFrame) -> pd.DataFrame:
 
-    df_historical['predicted_gross_revenue'] = df_historical['gross_revenue']
+    df_historical['predicted_gross_revenue'] = df_historical['gross_revenue'].fillna(0)
     df_upcoming['predicted_gross_revenue'] = run_model(df_historical, df_upcoming)
 
     df = pd.concat([df_historical, df_upcoming], axis=0, ignore_index=True)
