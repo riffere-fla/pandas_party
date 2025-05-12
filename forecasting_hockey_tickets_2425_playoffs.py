@@ -470,12 +470,9 @@ def create_table(redshift_credentials: Dict) -> None:
                 ticket.*,
                 current_revenue.current_gross_revenue,
                 projected_atp.weighted_average_gross_paid_atp,
-                --coalesce(secondary.additional_secondary, 0) AS "additional_secondary",
-                --(ticket.cumulative_tickets_predicted * projected_atp.weighted_average_gross_paid_atp)
-                --    + coalesce(secondary.additional_secondary, 0)
-                --    + current_revenue.current_gross_revenue
-                --    AS "projected_gross_revenue"
+                coalesce(secondary.predicted_additional_secondary, 0) AS "additional_secondary",
                 (ticket.cumulative_tickets_predicted * projected_atp.weighted_average_gross_paid_atp)
+                    + coalesce(secondary.predicted_additional_secondary, 0)
                     + current_revenue.current_gross_revenue
                     AS "projected_gross_revenue"
             FROM
@@ -486,10 +483,10 @@ def create_table(redshift_credentials: Dict) -> None:
                 projected_atp USING (tier, arena_level_internal)
             --         ON ticket.tier = projected_atp.tier
             --         AND ticket.arena_level_internal = projected_atp.arena_level_internal
-            --LEFT JOIN
-            --    custom.cth_secondary_difference_projection_2425 secondary
-            --        ON ticket.event_date::date = secondary.event_date::date
-            --        AND ticket.arena_level_internal = 'Uppers'
+            LEFT JOIN
+                custom.cth_secondary_difference_projection_2425_playoffs secondary
+                    ON ticket.event_date::date = secondary.event_date::date
+                    AND ticket.arena_level_internal = 'Uppers'
             ORDER BY
                 ticket.event_date,
                 ticket.arena_level_internal

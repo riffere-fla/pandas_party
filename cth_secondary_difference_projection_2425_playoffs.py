@@ -42,12 +42,12 @@ def get_redshift_credentials() -> Dict:
 ### HELPER FUNCTIONS ###################################################
 ########################################################################
 
-def run_model(df: pd.DataFrame, df_future: pd.DataFrame) -> np.ndarray:
+def run_model(df: pd.DataFrame, df_future: pd.DataFrame, y) -> np.ndarray:
 
-    x_train = df[['attendance','weekend_num','start_time_num','tier_num']]
-    y_train = df[['gross_revenue']]
+    x_train = df[['weekend_num','start_time_num','tier_num', 'original_six_plus_extra']]
+    y_train = df[[y]]
 
-    x_test = df_future[['predicted_turnstile','weekend_num','start_time_num','tier_num']]
+    x_test = df_future[['weekend_num','start_time_num','tier_num', 'original_six_plus_extra']]
 
     scalar = StandardScaler()
     poly_features = scalar.fit_transform(x_train)
@@ -65,35 +65,30 @@ def run_model(df: pd.DataFrame, df_future: pd.DataFrame) -> np.ndarray:
 def extract_historical(redshift_credentials: Dict) -> pd.DataFrame:
 
     q = """
-        WITH attendance AS (
+        WITH add_secondary AS (
             SELECT
-                event_datetime,
-                COUNT(*) AS attendance
+                event_date,
+                proj_revenue,
+                additional_secondary
             FROM
-                custom.cth_v_attendance_2324_playoffs
-            GROUP BY
-                event_datetime
+                custom.cth_secondary_difference_projection_2425
         )
         SELECT
             cth_game_descriptions.season,
             cth_game_descriptions.event_date,
             tier,
+            original_six_plus_extra,
             day_of_week,
             start_time,
-            attendance,
-            gross_revenue,
-            num_orders,
-            quantity_sold
+            proj_revenue,
+            additional_secondary
         FROM
-            custom.cheq_v_hockey_summary
+            add_secondary
         LEFT JOIN
-            custom.cth_game_descriptions 
-            ON DATE(cheq_v_hockey_summary.event_date) = DATE(cth_game_descriptions.event_date)
-        LEFT JOIN
-            attendance 
-            ON DATE(attendance.event_datetime) = DATE(cheq_v_hockey_summary.event_date)
+            custom.cth_game_descriptions
+            ON DATE(add_secondary.event_date) = DATE(cth_game_descriptions.event_date)
         WHERE
-            tier IN ('R1', 'R2', 'R3', 'SC')
+            tier IN ('A','B')
     """
 
     return FLA_Redshift(**redshift_credentials).query_warehouse(sql_string=q)
@@ -102,19 +97,17 @@ def extract_historical(redshift_credentials: Dict) -> pd.DataFrame:
 def extract_upcoming(redshift_credentials: Dict) -> pd.DataFrame:
 
     q = """
-    SELECT
-        season,
-        date(cth_game_descriptions.event_date) AS event_date,
-        day_of_week,
-        cth_game_descriptions.tier,
-        start_time,
-        predicted_turnstile
-    FROM
-        custom.cth_game_descriptions
-    LEFT JOIN
-        custom.forecasting_hockey_turnstile_2425_playoffs on cth_game_descriptions.event_date = forecasting_hockey_turnstile_2425_playoffs.event_date
-    WHERE
-        cth_game_descriptions.event_date >= current_date
+        SELECT
+            season,
+            date(cth_game_descriptions.event_date) AS event_date,
+            original_six_plus_extra,
+            day_of_week,
+            cth_game_descriptions.tier,
+            start_time
+        FROM
+            custom.cth_game_descriptions
+        WHERE
+            cth_game_descriptions.event_date >= current_date
     """
 
     return FLA_Redshift(**redshift_credentials).query_warehouse(sql_string=q)
@@ -141,7 +134,9 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
             'SC': 4,
             'R3': 3,
             'R2': 2,
-            'R1': 1
+            'R1': 1,
+            'A' : 1,
+            'B' : 1
         }
 
         df['tier_num'] = 0
@@ -176,19 +171,13 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
 @task(log_prints = True)
 def get_predictions(df_historical: pd.DataFrame, df_upcoming: pd.DataFrame) -> pd.DataFrame:
 
-    df_historical['predicted_gross_revenue'] = df_historical['gross_revenue']
-    df_upcoming['predicted_gross_revenue'] = run_model(df_historical, df_upcoming)
+    df_upcoming['predicted_additional_secondary'] = run_model(df_historical, df_upcoming, 'additional_secondary')
+    df_upcoming['predicted_proj_revenue'] = run_model(df_historical, df_upcoming, 'proj_revenue')
 
-    df = pd.concat([df_historical, df_upcoming], axis=0, ignore_index=True)
-
-    df = df[df['season'] == '2024-25']
-    df = df.rename(columns={'gross_revenue': 'current_gross_revenue'})
-
-    df = df[[
+    df = df_upcoming[[
         'event_date',
-        'attendance',
-        'current_gross_revenue',
-        'predicted_gross_revenue'
+        'predicted_additional_secondary',
+        'predicted_proj_revenue'
     ]]
 
     return df
@@ -198,7 +187,7 @@ def load(redshift_credentials: Dict, df: pd.DataFrame) -> None:
 
     FLA_Redshift(**redshift_credentials).write_to_warehouse(
         df = df,
-        table_name = "forecasting_hockey_fandb_rev_2425_playoffs"
+        table_name = "cth_secondary_difference_projection_2425_playoffs"
     )
 
     return None 
