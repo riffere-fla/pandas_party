@@ -40,7 +40,7 @@ def create_table(redshift_credentials: Dict) -> None:
 
         CREATE TABLE custom.ctwm_v_tv AS (
 
-                        WITH event_types AS (
+            WITH event_types AS (
                 SELECT DISTINCT
                     event_type
                 FROM
@@ -130,6 +130,7 @@ def create_table(redshift_credentials: Dict) -> None:
                 cross_table.seatgeek_product_id,
                 cross_table.event_name,
                 cross_table.secondary_event_type,
+                cross_table.tableau_start_time,
                 coalesce(tickets.total_seats, 0) AS total_seats,
                 coalesce(tickets.todays_tickets, 0) AS todays_tickets,
                 coalesce(tickets.yesterdays_tickets, 0) AS yesterdays_tickets,
