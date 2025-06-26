@@ -40,7 +40,7 @@ def create_table(redshift_credentials: Dict) -> None:
 
         CREATE TABLE custom.ctwm_v_tv AS (
 
-            WITH event_types AS (
+                        WITH event_types AS (
                 SELECT DISTINCT
                     event_type
                 FROM
@@ -123,6 +123,25 @@ def create_table(redshift_credentials: Dict) -> None:
                     tickets_temp
                 GROUP BY
                     event_datetime, event_types
+            ),
+            ticket_status AS (
+                SELECT
+                    event_datetime,
+                    product_id as seatgeek_product_id,
+                    listagg(distinct locks),
+                    listagg(distinct allocations),
+                    count(*) as capacity,
+                    count(CASE WHEN status IN ('SOLD', 'HELD') THEN 1 END)::float / count(*) AS sell_through
+                FROM
+                    custom.ctwm_v_ticket_status
+                INNER JOIN
+                    event_dates USING (event_datetime)
+                WHERE
+                    (lower(locks) NOT ILIKE '%kill%' or locks is null)
+                    AND (lower(allocations) NOT ILIKE '%kill%' or allocations is null)
+                GROUP BY
+                    event_datetime,
+                    product_id
             )
             SELECT
                 cross_table.event_type,
@@ -130,7 +149,9 @@ def create_table(redshift_credentials: Dict) -> None:
                 cross_table.seatgeek_product_id,
                 cross_table.event_name,
                 cross_table.secondary_event_type,
-                cross_table.tableau_start_time,
+                cross_table.start_time_tableau,
+                coalesce(ticket_status.capacity, 0) AS "capacity",
+                coalesce(ticket_status.sell_through, 0) AS "sell_through",
                 coalesce(tickets.total_seats, 0) AS total_seats,
                 coalesce(tickets.todays_tickets, 0) AS todays_tickets,
                 coalesce(tickets.yesterdays_tickets, 0) AS yesterdays_tickets,
@@ -142,8 +163,11 @@ def create_table(redshift_credentials: Dict) -> None:
                 tickets
                     ON cross_table.event_datetime = tickets.event_datetime
                     AND cross_table.event_type = tickets.event_types
+            LEFT JOIN
+                ticket_status ON cross_table.seatgeek_product_id = ticket_status.seatgeek_product_id
             ORDER BY
-                cross_table.event_datetime, cross_table.event_type
+                cross_table.event_datetime, 
+                cross_table.event_type
         
         );
     """
