@@ -278,17 +278,19 @@ def transform_prepaid_transactions(df: pd.DataFrame) -> pd.DataFrame:
 
     def create_location_group_num(df: pd.DataFrame) -> pd.DataFrame:
         # Define the dictionary with lists of start times
-        lookup = {
-            1: "Valet",
-            2: "General",
-            3: "Garage",
-            4: "Club"
-        }
+        # lookup = {
+        #     1: "Valet",
+        #     2: "General",
+        #     3: "Garage",
+        #     4: "Club"
+        # }
 
-        # Default to 0 for any start time not in the lookup
-        df['location_group_num'] = 0
-        for key, value in lookup.items():
-            df.loc[df['location_group'] == value, 'location_group_num'] = key
+        # # Default to 0 for any start time not in the lookup
+        # df['location_group_num'] = 0
+        # for key, value in lookup.items():
+        #     df.loc[df['location_group'] == value, 'location_group_num'] = key
+
+        df = pd.get_dummies(df, columns=['location_group'], prefix = '', prefix_sep = '')
 
         return df
 

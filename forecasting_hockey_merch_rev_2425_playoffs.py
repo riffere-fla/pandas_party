@@ -144,16 +144,18 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
         return df
     
     def create_tier_num(df: pd.DataFrame) -> pd.DataFrame:
-        lookup = {
-            'SC': 4,
-            'R3': 3,
-            'R2': 2,
-            'R1': 1
-        }
+        # lookup = {
+        #     'SC': 4,
+        #     'R3': 3,
+        #     'R2': 2,
+        #     'R1': 1
+        # }
 
-        df['tier_num'] = 0
-        for key, value in lookup.items():
-            df.loc[df['tier'] == key, 'tier_num'] = value
+        # df['tier_num'] = 0
+        # for key, value in lookup.items():
+        #     df.loc[df['tier'] == key, 'tier_num'] = value
+
+        df = pd.get_dummies(df, columns=['tier'], prefix = '', prefix_sep = '')
 
         return df
     
